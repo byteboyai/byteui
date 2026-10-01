@@ -1,6 +1,7 @@
 pub mod card;
 pub mod list;
 pub mod property;
+pub mod tag;
 
 #[cfg(test)]
 mod tests {
