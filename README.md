@@ -19,6 +19,10 @@ ByteBoy 系产品（dozer、digger）共用的 iced 0.14 组件库。组件命�
 整体替换。`icon_size::{init,persist,reset}_scale` 的落盘路径由应用传入。
 环境变量 `BYTEUI_ICON_SCALE` 可覆盖启动缩放（`DOZER_ICON_SCALE` 为旧名，仍兼容）。
 
+## 组件展示
+
+`cargo run --example gallery` 查看全部组件的各种状态；改组件后用它目测。
+
 ## 本地联调（不提交）
 
 在消费方的 `.cargo/config.toml` 里加：
