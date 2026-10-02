@@ -159,10 +159,20 @@ pub fn reset_scale(path: &Path) {
 }
 
 /// 启动时把上次退出前落盘的 scale 读回并应用为当前值,调用方传入落盘路径
-/// (`byteui` 不内置任何 Dozer 专属路径约定)。`DOZER_ICON_SCALE` 环境变量
-/// 是显式覆盖,优先级高于落盘值。
+/// (`byteui` 不内置任何 Dozer 专属路径约定)。环境变量 `BYTEUI_ICON_SCALE`
+/// (旧名 `DOZER_ICON_SCALE`)是显式覆盖,优先级高于落盘值。
 pub fn init_scale(path: &Path) {
-    if env_scale_override().is_some() {
+    init_scale_with(
+        path,
+        std::env::var(ENV_SCALE).ok(),
+        std::env::var(ENV_SCALE_LEGACY).ok(),
+    );
+}
+
+/// `init_scale` 的可测版本：环境变量值由参数传入，不碰进程环境。
+/// 只有"有效"的覆盖值才跳过落盘值；非法值等同没设。
+fn init_scale_with(path: &Path, primary: Option<String>, legacy: Option<String>) {
+    if pick_env_scale(primary, legacy).is_some() {
         return;
     }
     if let Some(v) = load_persisted_scale(path) {
@@ -342,5 +352,25 @@ mod tests {
             pick_env_scale(Some("abc".into()), Some("2.0".into())),
             Some(2.0)
         );
+    }
+
+    /// 环境变量是非法值（等同没设）时，仍然要读回用户保存的缩放。
+    #[test]
+    fn init_with_invalid_env_still_loads_persisted() {
+        with_temp_scale_file(|path| {
+            save_to(path, 2.0).unwrap();
+            init_scale_with(path, Some("abc".into()), Some("0".into()));
+            assert_eq!(CURRENT_SCALE.load(Ordering::Relaxed), 2.0f32.to_bits());
+        });
+    }
+
+    /// 环境变量是有效值时，覆盖落盘值：不应读回落盘值。
+    #[test]
+    fn init_with_valid_env_skips_persisted() {
+        with_temp_scale_file(|path| {
+            save_to(path, 2.0).unwrap();
+            init_scale_with(path, Some("1.5".into()), None);
+            assert_eq!(CURRENT_SCALE.load(Ordering::Relaxed), u32::MAX);
+        });
     }
 }
