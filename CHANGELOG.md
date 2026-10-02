@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- 新增 `interaction::tab_strip`：页签栏纯逻辑（不含 iced 类型），自 dozer-app 搬来、行为不变。
+  `TabOverflow`、`tab_window`、`tab_window_reveal`（溢出窗口与选中自动带入可见区），
+  `tab_drag_past_threshold` 与 `TAB_DRAG_CONFIRM_THRESHOLD_PX`（拖拽确认阈值）。
+
 ## 0.2.1
 
 - gallery：各行内容垂直居中对齐；补充带前置图标的 Button 与数量为 0 的 Badge。无库代码改动。
