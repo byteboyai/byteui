@@ -177,6 +177,8 @@ pub enum IconKind {
     GooseDark,
     /// footbar CPU 段前缀图标(Lucide square-activity:圆角方框 + 折线,表活跃度)。
     SquareActivity,
+    /// 群聊面板 rail 图标(Lucide square-sparkles:方框 + 星芒,表多 agent 协作)。
+    SquareSparkles,
     /// footbar Proxy 段前分隔图标(Lucide square-radical:方括号根号,代代理/路由)。
     SquareRadical,
     /// 顶栏/footbar 品牌前置图标(Lucide square-terminal:方角框 + 终端提示符),
@@ -335,6 +337,9 @@ impl IconKind {
             IconKind::GooseLight => include_bytes!("../../assets/icons/goose-light.svg"),
             IconKind::GooseDark => include_bytes!("../../assets/icons/goose-dark.svg"),
             IconKind::SquareActivity => include_bytes!("../../assets/icons/square-activity.svg"),
+            IconKind::SquareSparkles => {
+                include_bytes!("../../assets/icons/square-sparkles.svg")
+            }
             IconKind::SquareRadical => include_bytes!("../../assets/icons/square-radical.svg"),
             IconKind::SquareTerminal => include_bytes!("../../assets/icons/square-terminal.svg"),
             IconKind::GitGraph => include_bytes!("../../assets/icons/git-graph.svg"),
@@ -621,5 +626,17 @@ mod tests {
     fn dimmed_passthrough_when_false() {
         let c = Color::from_rgb(1.0, 0.5, 0.2);
         assert_eq!(dimmed(c, false), c);
+    }
+
+    #[test]
+    fn square_sparkles_icon_has_svg_bytes() {
+        let bytes = IconKind::SquareSparkles.bytes();
+        let text = std::str::from_utf8(bytes).expect("svg 是 utf8");
+        assert!(text.contains("<svg"), "应是 svg 文本");
+        assert!(
+            text.contains("currentColor"),
+            "Lucide 描边图标用 currentColor"
+        );
+        assert!(!IconKind::SquareSparkles.preserves_original_color());
     }
 }

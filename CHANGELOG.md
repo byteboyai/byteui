@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- 新增 `IconKind::SquareSparkles`（Lucide square-sparkles），供 dozer 群聊面板 rail 图标使用。
+
 ## 0.4.0
 
 - 新增 `feedback::dialog`：弹窗外观原语，自 dozer-app 的 `dialog.rs` 搬来，行为不变。
