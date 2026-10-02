@@ -1,6 +1,6 @@
 [package]
 name = "byteui"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 description = "ByteBoy 系产品共用的 iced 0.14 UI 组件库"
@@ -14,4 +14,5 @@ iced_renderer = "0.14"
 iced_futures = { version = "0.14", features = ["tokio"] }
 
 [dev-dependencies]
+iced = { version = "0.14", features = ["svg", "canvas"] }
 tempfile = "3"

@@ -1,3 +1,4 @@
+pub mod button;
 pub mod checkbox;
 pub mod input_text;
 pub mod search_box;
