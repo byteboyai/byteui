@@ -4,9 +4,10 @@
 use byteui::data::{badge, card, tag};
 use byteui::feedback::status;
 use byteui::form::{button, switch};
+use byteui::interaction::icons::{self, IconKind};
 use byteui::theme::color;
 use iced::widget::{column, container, row, text};
-use iced::{Element, Length};
+use iced::{Alignment, Element, Length};
 
 #[derive(Default)]
 struct Gallery {
@@ -40,8 +41,15 @@ impl Gallery {
                 button::view("拒绝", button::Kind::Secondary, None, Some(Msg::Noop)),
                 button::view("已禁用", button::Kind::Primary, None, None),
                 button::view("已禁用", button::Kind::Secondary, None, None),
+                button::view(
+                    "新建项目",
+                    button::Kind::Primary,
+                    Some(icons::view(IconKind::Plus, 14.0, c.panel)),
+                    Some(Msg::Noop),
+                ),
             ]
-            .spacing(8),
+            .spacing(8)
+            .align_y(Alignment::Center),
             title("Tag"),
             row![
                 tag::view("可审查", tag::Tone::Green),
@@ -50,9 +58,17 @@ impl Gallery {
                 tag::view("r128", tag::Tone::Gold),
                 tag::view("v7", tag::Tone::Neutral),
             ]
-            .spacing(8),
+            .spacing(8)
+            .align_y(Alignment::Center),
             title("Badge"),
-            row![badge::count(3, 99), badge::count(120, 99), badge::dot()].spacing(8),
+            row![
+                badge::count(0, 99),
+                badge::count(3, 99),
+                badge::count(120, 99),
+                badge::dot(),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
             title("Status / Switch / Card"),
             row![
                 status::dot(c.green),
@@ -60,7 +76,8 @@ impl Gallery {
                 status::dot(c.red),
                 switch::view("开关", self.switch_on, Msg::Toggled),
             ]
-            .spacing(8),
+            .spacing(8)
+            .align_y(Alignment::Center),
             card::view("Project Memory", Some("r128 · 健康"), false, false),
         ]
         .spacing(14);
