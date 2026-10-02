@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- 新增 `feedback::dialog`：弹窗外观原语，自 dozer-app 的 `dialog.rs` 搬来，行为不变。
+  `card_style`、`actions`、`action_button_border_color`、`action_button_style`、
+  `ConfirmDialog`、`confirm`。
+- `card_style` 的 PANEL 底、金色描边（1.5）与圆角（8）改为组件内常量，取值与搬迁前一致。
+
 ## 0.3.0
 
 - 新增 `interaction::tab_strip`：页签栏纯逻辑（不含 iced 类型），自 dozer-app 搬来、行为不变。
