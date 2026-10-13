@@ -4,12 +4,12 @@ use iced_widget::checkbox::{self, Status};
 use iced_widget::core::{Border, Element};
 
 pub fn view<'a, Message: Clone + 'a>(
-    label: &'a str,
+    label: &str,
     is_checked: bool,
     on_toggle: impl Fn(bool) -> Message + 'a,
 ) -> Element<'a, Message, iced_widget::Theme, iced_renderer::Renderer> {
     iced_widget::checkbox(is_checked)
-        .label(label)
+        .label(label.to_string())
         .on_toggle(on_toggle)
         .style(|_theme: &iced_widget::Theme, status: Status| {
             let colors = crate::theme::color::current();

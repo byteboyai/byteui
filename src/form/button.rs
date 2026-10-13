@@ -72,7 +72,7 @@ pub fn style_for(kind: Kind, status: Status, colors: &ColorTokens) -> button::St
 }
 
 pub fn view<'a, Message: Clone + 'a>(
-    label: &'a str,
+    label: &str,
     kind: Kind,
     leading: Option<Element<'a, Message, iced_widget::Theme, iced_renderer::Renderer>>,
     on_press: Option<Message>,
@@ -83,7 +83,7 @@ pub fn view<'a, Message: Clone + 'a>(
     if let Some(icon) = leading {
         content = content.push(icon);
     }
-    content = content.push(text(label).size(crate::theme::font::label()));
+    content = content.push(text(label.to_string()).size(crate::theme::font::label()));
     iced_widget::button(content)
         .padding(Padding::from([6.0, 14.0]))
         .on_press_maybe(on_press)

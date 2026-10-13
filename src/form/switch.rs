@@ -4,12 +4,12 @@ use iced_widget::core::Element;
 use iced_widget::toggler::{self, Status};
 
 pub fn view<'a, Message: Clone + 'a>(
-    label: &'a str,
+    label: &str,
     is_on: bool,
     on_toggle: impl Fn(bool) -> Message + 'a,
 ) -> Element<'a, Message, iced_widget::Theme, iced_renderer::Renderer> {
     iced_widget::toggler(is_on)
-        .label(label)
+        .label(label.to_string())
         .on_toggle(on_toggle)
         .style(|_theme: &iced_widget::Theme, status: Status| {
             let colors = crate::theme::color::current();

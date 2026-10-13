@@ -9,14 +9,14 @@ use iced_widget::text_editor::{self, Status};
 
 pub fn view<'a, Message: Clone + 'a>(
     content: &'a text_editor::Content,
-    placeholder: &'a str,
+    placeholder: &str,
     id: Option<widget::Id>,
     bare: bool,
     height: Option<f32>,
     on_action: impl Fn(text_editor::Action) -> Message + 'a,
 ) -> Element<'a, Message, iced_widget::Theme, iced_renderer::Renderer> {
     let editor = iced_widget::text_editor(content)
-        .placeholder(placeholder)
+        .placeholder(placeholder.to_string())
         .on_action(on_action)
         .size(crate::theme::font::body())
         .padding(8);
