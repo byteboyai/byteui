@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.3
+
+- 新增 `theme::region`:外壳区域样式(`top_bar`、`left_icon_rail`、`right_icon_rail`、`status_bar`、`left_zone`、`right_zone`、`maximize_overlay`、`window_background`)。数值与 Dozer `workspace.json` 的同名区域一致;颜色令牌每次现读,`padding` / `margin` / `gap` 与放大浮层尺寸乘全局 UI scale。供共享窗口骨架 `bytehost-chrome` 使用。
+- 新增 `examples/dump_shell_regions.rs`:导出这些区域的规格 JSON,供跨仓库一致性检查使用。
+
 ## 0.4.1
 
 - 新增 `IconKind::SquareSparkles`（Lucide square-sparkles），供 dozer 群聊面板 rail 图标使用。
