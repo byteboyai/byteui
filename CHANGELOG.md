@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.4
+
+- 新增 `IconKind::QoderLight` / `IconKind::QoderDark`:Qoder 品牌 logo,明暗主题各一份,自带固定色(`preserves_original_color()` 为 `true`),用法同 `GooseLight` / `GooseDark`。素材由官方 PNG 矢量化,`assets/icons/qoder-{light,dark}.svg` 除填充色外逐字节相同。供 dozer 新增的 qodercn agent 使用。
+
 ## 0.4.3
 
 - 新增 `theme::region`:外壳区域样式(`top_bar`、`left_icon_rail`、`right_icon_rail`、`status_bar`、`left_zone`、`right_zone`、`maximize_overlay`、`window_background`)。数值与 Dozer `workspace.json` 的同名区域一致;颜色令牌每次现读,`padding` / `margin` / `gap` 与放大浮层尺寸乘全局 UI scale。供共享窗口骨架 `bytehost-chrome` 使用。

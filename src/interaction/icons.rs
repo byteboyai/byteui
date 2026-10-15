@@ -162,7 +162,8 @@ pub enum IconKind {
     /// `currentColor`,由调用方按 agent 指定主题色。
     /// 来源:Claude/CodeBuddy 取自 Simple Icons,OpenCode 取自其官网 favicon 并
     /// 归一化到 24×24;Codex 使用原始蓝紫渐变品牌 logo;
-    /// Aider 使用官网 logo 的绿色发光字母 a,Goose 使用其明暗主题展翅剪影素材。均为品牌标识,
+    /// Aider 使用官网 logo 的绿色发光字母 a,Goose 使用其明暗主题展翅剪影素材,
+    /// Qoder 使用官方描边 logo(由官方 PNG 经 potrace 矢量化,明暗各一份)。均为品牌标识,
     /// 非 Lucide;仅供 Agent 身份识别。
     Claude,
     Codebuddy,
@@ -175,6 +176,10 @@ pub enum IconKind {
     GooseLight,
     /// Goose(深色主题用白色展翅剪影)。
     GooseDark,
+    /// Qoder(浅色主题用近黑描边 logo,素材取自 Qoder 官方图标)。
+    QoderLight,
+    /// Qoder(深色主题用白色描边 logo)。
+    QoderDark,
     /// footbar CPU 段前缀图标(Lucide square-activity:圆角方框 + 折线,表活跃度)。
     SquareActivity,
     /// 群聊面板 rail 图标(Lucide square-sparkles:方框 + 星芒,表多 agent 协作)。
@@ -246,7 +251,12 @@ impl IconKind {
     pub const fn preserves_original_color(self) -> bool {
         matches!(
             self,
-            Self::Codex | Self::Aider | Self::GooseLight | Self::GooseDark
+            Self::Codex
+                | Self::Aider
+                | Self::GooseLight
+                | Self::GooseDark
+                | Self::QoderLight
+                | Self::QoderDark
         )
     }
 
@@ -336,6 +346,8 @@ impl IconKind {
             IconKind::Codex => include_bytes!("../../assets/icons/codex.svg"),
             IconKind::GooseLight => include_bytes!("../../assets/icons/goose-light.svg"),
             IconKind::GooseDark => include_bytes!("../../assets/icons/goose-dark.svg"),
+            IconKind::QoderLight => include_bytes!("../../assets/icons/qoder-light.svg"),
+            IconKind::QoderDark => include_bytes!("../../assets/icons/qoder-dark.svg"),
             IconKind::SquareActivity => include_bytes!("../../assets/icons/square-activity.svg"),
             IconKind::SquareSparkles => {
                 include_bytes!("../../assets/icons/square-sparkles.svg")
@@ -638,5 +650,36 @@ mod tests {
             "Lucide 描边图标用 currentColor"
         );
         assert!(!IconKind::SquareSparkles.preserves_original_color());
+    }
+
+    /// Qoder 与 Goose 同构:明暗主题各一份自带固定色的剪影,渲染器不能再给它上色。
+    #[test]
+    fn qoder_icons_are_fixed_colour_light_and_dark_silhouettes() {
+        let light = std::str::from_utf8(IconKind::QoderLight.bytes()).expect("svg 是 utf8");
+        let dark = std::str::from_utf8(IconKind::QoderDark.bytes()).expect("svg 是 utf8");
+        for (name, text) in [("light", light), ("dark", dark)] {
+            assert!(text.starts_with("<svg"), "{name} 应是 svg 文本");
+            assert!(text.contains("<path"), "{name} 应有图形路径");
+            assert!(
+                !text.contains("currentColor"),
+                "{name} 自带固定色,不能是 currentColor"
+            );
+        }
+        assert!(light.contains("fill=\"#0f0d0c\""), "浅色主题用近黑");
+        assert!(dark.contains("fill=\"#ffffff\""), "深色主题用白色");
+        assert!(IconKind::QoderLight.preserves_original_color());
+        assert!(IconKind::QoderDark.preserves_original_color());
+    }
+
+    /// 明暗两版必须是同一个图形,只有填充色不同(防止以后只改了一份)。
+    #[test]
+    fn qoder_light_and_dark_differ_only_in_fill() {
+        let light = std::str::from_utf8(IconKind::QoderLight.bytes()).unwrap();
+        let dark = std::str::from_utf8(IconKind::QoderDark.bytes()).unwrap();
+        assert_eq!(
+            light.replace("#0f0d0c", "#ffffff"),
+            dark,
+            "除填充色外两份 svg 应逐字节相同"
+        );
     }
 }
