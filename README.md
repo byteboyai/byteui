@@ -4,7 +4,7 @@ ByteBoy 系产品（dozer、digger）共用的 iced 0.14 组件库。组件命�
 
 ## 使用
 
-    byteui = { git = "https://github.com/byteboyai/byteui", tag = "v0.1.0" }
+    byteui = { git = "https://github.com/byteboyai/byteui", tag = "vX.Y.Z" }
 
 一律用 `tag`，不要用 `branch`。
 

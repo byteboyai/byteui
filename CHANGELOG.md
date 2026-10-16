@@ -9,6 +9,10 @@
 - 新增 `theme::region`:外壳区域样式(`top_bar`、`left_icon_rail`、`right_icon_rail`、`status_bar`、`left_zone`、`right_zone`、`maximize_overlay`、`window_background`)。数值与 Dozer `workspace.json` 的同名区域一致;颜色令牌每次现读,`padding` / `margin` / `gap` 与放大浮层尺寸乘全局 UI scale。供共享窗口骨架 `bytehost-chrome` 使用。
 - 新增 `examples/dump_shell_regions.rs`:导出这些区域的规格 JSON,供跨仓库一致性检查使用。
 
+## 0.4.2
+
+- `form::button`、`form::checkbox`、`form::switch` 的 `label`，以及 `form::text_area` 的 `placeholder`，参数类型由 `&'a str` 放宽为 `&str`（内部转成拥有的 `String`），调用方不必再让字符串活得和返回的 `Element` 一样久。源码兼容：原来传 `&'a str` 的调用点不用改。
+
 ## 0.4.1
 
 - 新增 `IconKind::SquareSparkles`（Lucide square-sparkles），供 dozer 群聊面板 rail 图标使用。
