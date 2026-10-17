@@ -30,6 +30,7 @@ pub struct ColorTokens {
     pub magenta: Color,
     pub blue: Color,
     pub lime: Color,
+    pub teal: Color,
     pub scrim: Color,
     pub tab_active_border: Color,
     pub tab_active_bg: Color,
@@ -65,6 +66,7 @@ impl ColorTokens {
             magenta: c(0xFF, 0x6E, 0xC7),
             blue: c(0x4D, 0x8C, 0xFF),
             lime: c(0xA3, 0xE6, 0x35),
+            teal: c(0x2D, 0xD4, 0xBF),
             scrim: Color {
                 r: 0.0,
                 g: 0.0,
@@ -101,6 +103,7 @@ impl ColorTokens {
             magenta: c(0xc9, 0x3b, 0x93),
             blue: c(0x2f, 0x6f, 0xe0),
             lime: c(0x6f, 0xa8, 0x13),
+            teal: c(0x0D, 0x94, 0x88),
             scrim: Color {
                 r: 0x0a as f32 / 255.0,
                 g: 0x0e as f32 / 255.0,
