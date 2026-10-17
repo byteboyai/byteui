@@ -470,6 +470,34 @@ pub fn icon_button_entry<'a, M: Clone + 'a>(
         .align_x(iced_widget::core::alignment::Horizontal::Center)
         .align_y(iced_widget::core::alignment::Vertical::Center);
 
+    button_shell(
+        inner.into(),
+        active,
+        dim,
+        card,
+        button_size,
+        interactive,
+        on_select,
+        on_hover,
+        tooltip,
+    )
+}
+
+/// 图标按钮的共用外壳(`icon_button_entry` 与 `glyph_button_entry` 共用):常驻卡片底、选中态 1px 金框、
+/// 拖拽 dim、命中区、`MouseArea`(Pointer 光标 + hover 回调)、可选 tooltip。`inner` 是已经画好的内容。
+#[allow(clippy::too_many_arguments)]
+fn button_shell<'a, M: Clone + 'a>(
+    inner: Element<'a, M, iced_widget::Theme, iced_renderer::Renderer>,
+    active: bool,
+    dim: bool,
+    card: bool,
+    button_size: f32,
+    interactive: bool,
+    on_select: M,
+    on_hover: impl Fn(bool) -> M + 'a,
+    tooltip: impl Into<Cow<'a, str>>,
+) -> Element<'a, M, iced_widget::Theme, iced_renderer::Renderer> {
+    let colors = crate::theme::color::current();
     let radius = 8.0;
     let base_border = Border {
         color: Color::TRANSPARENT,
@@ -524,6 +552,99 @@ pub fn icon_button_entry<'a, M: Clone + 'a>(
     } else {
         with_tooltip(content, tooltip)
     }
+}
+
+/// 在 `light`/`dark` 两个候选里选与 `fill` 对比度(WCAG)更高的一个,用作 `fill` 底色上的字符色。
+pub fn readable_ink(fill: Color, light: Color, dark: Color) -> Color {
+    fn luminance(c: Color) -> f32 {
+        let lin = |v: f32| {
+            if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+    }
+    let contrast = |a: Color, b: Color| {
+        let (la, lb) = (luminance(a), luminance(b));
+        (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+    };
+    if contrast(fill, light) >= contrast(fill, dark) {
+        light
+    } else {
+        dark
+    }
+}
+
+/// 字符徽标:`size × size` 圆角方块(圆角 `size * 0.25`),底色 `fill`,字符 `ch` 居中、字号 `size * 0.6`、
+/// 颜色 `ink`。系统默认字体 + `Shaping::Advanced`(CJK 回退),与 [`view`] 的 SVG 图标同尺寸语义。
+pub fn glyph_view<'a, M: 'a>(
+    ch: char,
+    size: f32,
+    fill: Color,
+    ink: Color,
+) -> Element<'a, M, iced_widget::Theme, iced_renderer::Renderer> {
+    container(
+        text(ch.to_string())
+            .size(size * 0.6)
+            .color(ink)
+            .shaping(iced_widget::core::text::Shaping::Advanced),
+    )
+    .width(Length::Fixed(size))
+    .height(Length::Fixed(size))
+    .align_x(iced_widget::core::alignment::Horizontal::Center)
+    .align_y(iced_widget::core::alignment::Vertical::Center)
+    .style(move |_t: &iced_widget::Theme| container::Style {
+        background: Some(fill.into()),
+        border: Border {
+            radius: (size * 0.25).into(),
+            ..Border::default()
+        },
+        ..container::Style::default()
+    })
+    .into()
+}
+
+/// 字符徽标版的 [`icon_button_entry`]:与它共用同一个外壳(卡片底、选中金框、hover、拖拽 dim、tooltip),
+/// 只是内容换成 [`glyph_view`]。hover 时底色向金色微微靠拢(`hover_t` 0..1);`dim` 时底色与字符一起压暗。
+#[allow(clippy::too_many_arguments)]
+pub fn glyph_button_entry<'a, M: Clone + 'a>(
+    ch: char,
+    fill: Color,
+    ink: Color,
+    size: f32,
+    active: bool,
+    dim: bool,
+    hover_t: f32,
+    card: bool,
+    button_size: f32,
+    interactive: bool,
+    on_select: M,
+    on_hover: impl Fn(bool) -> M + 'a,
+    tooltip: impl Into<Cow<'a, str>>,
+) -> Element<'a, M, iced_widget::Theme, iced_renderer::Renderer> {
+    let colors = crate::theme::color::current();
+    let fill = dimmed(
+        crate::theme::color::mix(fill, colors.gold, hover_t * 0.3),
+        dim,
+    );
+    let inner = container(glyph_view(ch, size, fill, dimmed(ink, dim)))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(iced_widget::core::alignment::Horizontal::Center)
+        .align_y(iced_widget::core::alignment::Vertical::Center);
+    button_shell(
+        inner.into(),
+        active,
+        dim,
+        card,
+        button_size,
+        interactive,
+        on_select,
+        on_hover,
+        tooltip,
+    )
 }
 
 /// 提示气泡的容器样式:背景 `PANEL` 实底 + `BORDER` 1px 描边圆角 6。`with_tooltip`
@@ -624,6 +745,60 @@ mod tests {
         assert_eq!(icon_for_file("LICENSE"), IconKind::FileGeneric);
         assert_eq!(icon_for_file("Makefile"), IconKind::FileGeneric);
         assert_eq!(icon_for_file("data.xyz"), IconKind::FileGeneric);
+    }
+
+    /// WCAG 相对亮度 / 对比度(测试内自带一份,不依赖被测函数)。
+    fn luminance(c: Color) -> f32 {
+        let lin = |v: f32| {
+            if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+    }
+
+    fn contrast(a: Color, b: Color) -> f32 {
+        let (la, lb) = (luminance(a), luminance(b));
+        (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+    }
+
+    #[test]
+    fn readable_ink_picks_the_higher_contrast_option() {
+        let (light, dark) = (Color::WHITE, Color::BLACK);
+        assert_eq!(readable_ink(Color::WHITE, light, dark), dark, "白底选深色");
+        assert_eq!(readable_ink(Color::BLACK, light, dark), light, "黑底选浅色");
+        // 中灰:两者之间选对比度更高的那个,且选中的不比没选的差。
+        let mid = Color::from_rgb(0.5, 0.5, 0.5);
+        let picked = readable_ink(mid, light, dark);
+        let other = if picked == light { dark } else { light };
+        assert!(contrast(mid, picked) >= contrast(mid, other));
+    }
+
+    /// 应用徽标的底色取自强调色 token;每个底色上的字符都要读得清(3:1,大号文字门槛)。
+    #[test]
+    fn readable_ink_reaches_3_to_1_on_every_accent_token() {
+        use crate::theme::color::ColorTokens;
+        for (name, t) in [
+            ("dark", ColorTokens::byteboy2077()),
+            ("light", ColorTokens::byteboy2077_light()),
+        ] {
+            for (hue, fill) in [
+                ("cyan", t.cyan),
+                ("green", t.green),
+                ("purple", t.purple),
+                ("orange", t.orange),
+                ("magenta", t.magenta),
+                ("blue", t.blue),
+                ("lime", t.lime),
+                ("teal", t.teal),
+            ] {
+                let ink = readable_ink(fill, t.cream, t.bg);
+                let ratio = contrast(fill, ink);
+                assert!(ratio >= 3.0, "{name}/{hue}: 对比度 {ratio:.2} < 3.0");
+            }
+        }
     }
 
     #[test]

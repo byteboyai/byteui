@@ -79,6 +79,16 @@ impl Gallery {
             .spacing(8)
             .align_y(Alignment::Center),
             card::view("Project Memory", Some("r128 · 健康"), false, false),
+            title("Glyph badge(普通 / 选中 / 拖拽 dim;不同底色、含中文)"),
+            row![
+                glyph(&c, 'P', c.cyan, false, false),
+                glyph(&c, '双', c.magenta, false, false),
+                glyph(&c, 'N', c.lime, true, false),
+                glyph(&c, 'E', c.purple, false, true),
+                glyph(&c, '?', c.orange, false, false),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center),
         ]
         .spacing(14);
         container(body)
@@ -91,6 +101,31 @@ impl Gallery {
             })
             .into()
     }
+}
+
+/// 图标栏里的一个字符徽标按钮(`active` = 选中金框,`dim` = 拖拽源变淡)。
+fn glyph(
+    c: &color::ColorTokens,
+    ch: char,
+    fill: iced::Color,
+    active: bool,
+    dim: bool,
+) -> Element<'static, Msg> {
+    icons::glyph_button_entry(
+        ch,
+        fill,
+        icons::readable_ink(fill, c.cream, c.bg),
+        28.0,
+        active,
+        dim,
+        0.0,
+        true,
+        40.0,
+        true,
+        Msg::Noop,
+        |_| Msg::Noop,
+        "示例应用",
+    )
 }
 
 fn main() -> iced::Result {

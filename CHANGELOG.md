@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.5
+
+- 新增 `interaction::icons::glyph_view` / `glyph_button_entry` / `readable_ink`:字符徽标——`size × size` 的圆角方块,底色任意、字符居中(系统默认字体 + `Shaping::Advanced`,中文可用)。`glyph_button_entry` 与 `icon_button_entry` 共用同一个按钮外壳(卡片底、选中金框、hover、拖拽 dim、tooltip),外壳已抽成私有 `button_shell`;`icon_button_entry` 行为逐字不变。`readable_ink(fill, light, dark)` 按 WCAG 对比度在两个候选里选更易读的字符色。供 dozer 给已安装的应用图标栏入口画首字母徽标。`examples/gallery` 增加了徽标的普通 / 选中 / 拖拽 dim 三态样例。
+- 新增颜色 token `teal`(深色 `#2DD4BF` / 浅色 `#0D9488`)。**注意:** 这是 0.4.4 之后、本版之前就已存在于主干的提交(`feat(theme): 新增 teal 语义色 token`),随本版一并发布。`ColorTokens` 因此多了一个字段——任何用结构体字面量构造 `ColorTokens` 的下游代码需要补上 `teal`。
+
 ## 0.4.4
 
 - 新增 `IconKind::QoderLight` / `IconKind::QoderDark`:Qoder 品牌 logo,明暗主题各一份,自带固定色(`preserves_original_color()` 为 `true`),用法同 `GooseLight` / `GooseDark`。素材由官方 PNG 矢量化,`assets/icons/qoder-{light,dark}.svg` 除填充色外逐字节相同。供 dozer 新增的 qodercn agent 使用。
