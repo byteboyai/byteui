@@ -1,5 +1,5 @@
 //! 组件展示:把各组件的各种状态摆在一个窗口里,改组件后在这里目测。
-//! 运行:`cargo run --example gallery`
+//! 运行:`cargo run --example gallery`;浅色:`GALLERY_SCHEME=light cargo run --example gallery`
 
 use byteui::data::{badge, card, tag};
 use byteui::feedback::status;
@@ -28,7 +28,10 @@ impl Gallery {
     }
 
     fn theme(&self) -> iced::Theme {
-        iced::Theme::Dark
+        match color::current_scheme() {
+            color::ColorScheme::Light => iced::Theme::Light,
+            _ => iced::Theme::Dark,
+        }
     }
 
     fn view(&self) -> Element<'_, Msg> {
@@ -89,6 +92,13 @@ impl Gallery {
             ]
             .spacing(8)
             .align_y(Alignment::Center),
+            title("Glyph badge:全部 accent 色(检查深/浅色下字符是否可读)"),
+            row(accents(&c)
+                .into_iter()
+                .zip("ABCDEFGH".chars())
+                .map(|(fill, ch)| glyph(&c, ch, fill, false, false)))
+            .spacing(8)
+            .align_y(Alignment::Center),
         ]
         .spacing(14);
         container(body)
@@ -128,7 +138,14 @@ fn glyph(
     )
 }
 
+fn accents(c: &color::ColorTokens) -> [iced::Color; 8] {
+    [c.cyan, c.green, c.purple, c.orange, c.magenta, c.blue, c.lime, c.teal]
+}
+
 fn main() -> iced::Result {
+    if std::env::var("GALLERY_SCHEME").is_ok_and(|v| v == "light") {
+        color::set_scheme(color::ColorScheme::Light);
+    }
     iced::application(Gallery::default, Gallery::update, Gallery::view)
         .theme(Gallery::theme)
         .run()
