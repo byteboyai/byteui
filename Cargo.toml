@@ -1,6 +1,6 @@
 [package]
 name = "byteui"
-version = "0.4.5"
+version = "0.4.6"
 edition = "2024"
 license = "MIT"
 description = "ByteBoy 系产品共用的 iced 0.14 UI 组件库"
@@ -12,6 +12,22 @@ serde_json = "1"
 iced_widget = { version = "0.14", features = ["svg", "canvas"] }
 iced_renderer = "0.14"
 iced_futures = { version = "0.14", features = ["tokio"] }
+
+# macOS 原生菜单(`native_menu`,NSMenu):运行时把内嵌 Lucide SVG 栅格化成 PNG 包成 NSImage。
+# resvg / usvg / tiny-skia 是 iced_wgpu svg feature 的间接依赖,这里 pin 到同一精确版本
+# (0.45.1 / 0.45.1 / 0.11.4)避免重复编译;tiny-skia 开 `png` feature 供 `encode_png()`。
+# objc2-quartz-core 的 `CALayer` feature 用来改菜单项 hover 高亮的 `backgroundColor`
+# (objc2-app-kit 只拉最小 feature 集,不开它编译期就报"方法不存在")。
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = "0.3"
+objc2-foundation = "0.3"
+objc2-quartz-core = { version = "=0.3.2", features = ["CALayer"] }
+raw-window-handle = "0.6"
+resvg = "=0.45.1"
+usvg = "=0.45.1"
+tiny-skia = { version = "=0.11.4", features = ["png"] }
+tracing = "0.1"
 
 [dev-dependencies]
 iced = { version = "0.14", features = ["svg", "canvas"] }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.6
+
+- 新增 `native_menu`(仅 macOS):原生 NSMenu 右键 / 弹出菜单,自 Dozer 的 `dozer-app::chrome::native_menu` 原样搬入,供 Dozer 与 Digger 共用。原生菜单是真窗口层级,天然浮在 wry 原生页面之上,不需要"弹出时把页面藏起来"。接口:`Item`(`Entry` / `Separator`)、`show` / `show_align_no_icon_left`(同步阻塞,选中返回对应消息)、`install_content_view`(窗口初始化时登记一次;**签名变化**:接收 `&dyn raw_window_handle::HasWindowHandle`,不再依赖 `winit`)。日志改用 `tracing`(target `byteui::native_menu`)。依赖 `objc2` / `objc2-app-kit` / `objc2-foundation` / `objc2-quartz-core` / `resvg` / `usvg` / `tiny-skia`(后三者与 iced_wgpu 同一精确版本),全部只在 macOS 目标上引入。
+- `examples/gallery`:`GALLERY_SCHEME=light` 切换浅色方案,并增加一行带全部强调色的字符徽标样例(0.4.5 之后就已存在于主干,随本版一并发布,只涉及示例)。
+
 ## 0.4.5
 
 - 新增 `interaction::icons::glyph_view` / `glyph_button_entry` / `readable_ink`:字符徽标——`size × size` 的圆角方块,底色任意、字符居中(系统默认字体 + `Shaping::Advanced`,中文可用)。`glyph_button_entry` 与 `icon_button_entry` 共用同一个按钮外壳(卡片底、选中金框、hover、拖拽 dim、tooltip),外壳已抽成私有 `button_shell`;`icon_button_entry` 行为逐字不变。`readable_ink(fill, light, dark)` 按 WCAG 对比度在两个候选里选更易读的字符色。供 dozer 给已安装的应用图标栏入口画首字母徽标。`examples/gallery` 增加了徽标的普通 / 选中 / 拖拽 dim 三态样例。
