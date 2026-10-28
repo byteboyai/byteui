@@ -119,6 +119,16 @@ const RIGHT_ZONE: Spec = Spec {
     margin: [6.0, 6.0, 0.0, 0.0],
 };
 
+/// 右键菜单/下拉/溢出菜单的外框(原先只在 Dozer 本地 `theme/region.rs`,Digger 手写过一份)。
+/// 背景令牌是 `PANEL`,但**不透明度在代码里置为 1.0**,见 [`context_menu`]。
+const CONTEXT_MENU: Spec = Spec {
+    background: Some(Token::Panel),
+    border: Some((Token::Border, 1.0, 9.0)),
+    padding: [8.0; 4],
+    gap: 1.0,
+    margin: ZERO,
+};
+
 /// 放大浮层:遮罩背景令牌、遮罩内边距、描边(颜色令牌, 线宽, 圆角)。
 const MAXIMIZE_SCRIM: Token = Token::Scrim;
 const MAXIMIZE_SCRIM_PADDING: f32 = 40.0;
@@ -145,6 +155,16 @@ fn resolve(spec: &Spec, c: &color::ColorTokens, s: f32) -> RegionStyle {
         gap: spec.gap * s,
         margin: scaled(spec.margin, s),
     }
+}
+
+fn resolve_context_menu(c: &color::ColorTokens, s: f32) -> RegionStyle {
+    let mut style = resolve(&CONTEXT_MENU, c, s);
+    // 完全不透明:菜单盖在别的内容上,wgpu 线性混合下 alpha 0.98 仍会让底下的亮字约 15% 透出
+    // (Digger 的溢出菜单盖在卡片列表上时实测如此;Dozer 原先是 0xfa/255,2026-10-28 裁决统一为 1.0)。
+    if let Some(bg) = style.background.as_mut() {
+        bg.a = 1.0;
+    }
+    style
 }
 
 fn resolve_overlay(c: &color::ColorTokens, s: f32) -> MaximizeOverlayStyle {
@@ -180,6 +200,10 @@ pub fn left_zone() -> RegionStyle {
 pub fn right_zone() -> RegionStyle {
     resolve(&RIGHT_ZONE, &color::current(), icon_size::scale())
 }
+/// 右键菜单等弹层的外框:`PANEL` 底(不透明)、1px `BORDER` 描边圆角 9、内边距 8、项间距 1(后两者乘全局 scale)。
+pub fn context_menu() -> RegionStyle {
+    resolve_context_menu(&color::current(), icon_size::scale())
+}
 pub fn maximize_overlay() -> MaximizeOverlayStyle {
     resolve_overlay(&color::current(), icon_size::scale())
 }
@@ -198,7 +222,7 @@ fn spec_json(spec: &Spec) -> Value {
     })
 }
 
-/// 7 个外壳区域的原始规格(令牌名 + 未缩放的数值),结构与 Dozer `workspace.json` 的 `regions` 对应项一致
+/// 8 个外壳区域(含 `context_menu`)的原始规格(令牌名 + 未缩放的数值),结构与 Dozer `workspace.json` 的 `regions` 对应项一致
 /// (`padding` / `margin` 一律展开为 `[top, right, bottom, left]`)。仅供跨仓库一致性检查使用。
 #[doc(hidden)]
 pub fn spec_dump() -> Value {
@@ -210,6 +234,7 @@ pub fn spec_dump() -> Value {
         "status_bar": spec_json(&STATUS_BAR),
         "left_zone": spec_json(&LEFT_ZONE),
         "right_zone": spec_json(&RIGHT_ZONE),
+        "context_menu": spec_json(&CONTEXT_MENU),
         "maximize_overlay": {
             "scrim": { "background": MAXIMIZE_SCRIM.name(), "padding": MAXIMIZE_SCRIM_PADDING },
             "border": { "color": t.name(), "width": width, "radius": radius },
@@ -350,5 +375,45 @@ mod tests {
                 assert!(d[region].get(key).is_some(), "{region}.{key}");
             }
         }
+    }
+
+    /// Dozer `workspace.json` 的 `context_menu` 与 Digger 原先手写的那份度量相同(Task 3 搬家前在 Dozer 上取得):
+    /// 缩放 1 时 padding 8 / gap 1,缩放 2 时 16 / 2;描边 1px、圆角 9 不随缩放。背景取 `panel` 的 rgb,
+    /// **alpha 为 1.0**(2026-10-28 裁决;0.98 会让底下的亮字约 15% 透出)。
+    #[test]
+    fn context_menu_matches_dozers_metrics_and_is_fully_opaque() {
+        let c = tokens();
+        for (scale, pad_v, gap) in [(1.0, 8.0, 1.0), (2.0, 16.0, 2.0)] {
+            let m = resolve_context_menu(&c, scale);
+            assert_eq!(m.padding, Padding::from(pad_v), "scale {scale}");
+            assert_eq!(m.gap, gap, "scale {scale}");
+            assert_eq!(m.margin, Padding::ZERO);
+            assert_eq!(
+                m.border,
+                Some(Border {
+                    color: c.border,
+                    width: 1.0,
+                    radius: 9.0.into()
+                })
+            );
+            let bg = m.background.expect("the menu has a background");
+            assert_eq!((bg.r, bg.g, bg.b), (c.panel.r, c.panel.g, c.panel.b));
+            assert_eq!(
+                bg.a, 1.0,
+                "the menu covers other content, so it must be opaque"
+            );
+        }
+    }
+
+    #[test]
+    fn the_exported_spec_includes_the_context_menu_region() {
+        let d = spec_dump();
+        assert_eq!(d["context_menu"]["background"], "PANEL");
+        assert_eq!(
+            d["context_menu"]["border"],
+            json!({ "color": "BORDER", "width": 1.0, "radius": 9.0 })
+        );
+        assert_eq!(d["context_menu"]["padding"], json!([8.0, 8.0, 8.0, 8.0]));
+        assert_eq!(d["context_menu"]["gap"], 1.0);
     }
 }
