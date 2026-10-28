@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+迁入 Dozer 与 Digger 原先各抄一份的页签 / 菜单部件(X1)。全部是**新增**,既有公开项签名不变;但有一处**行为变化**(见第一条)。
+
+- **行为变化:** 新增 `theme::region::context_menu()`,右键菜单 / 下拉 / 溢出菜单的外框区域,**背景 `panel` 色且完全不透明(alpha = 1.0)**。Dozer 原先是 alpha ≈ 0.98,wgpu 线性混合下仍会让底下的亮字约 15% 透出;Digger 早已是 1.0。度量(圆角 9、内边距 8、项间距 1,后两者乘全局 scale;描边 1px)与 Dozer `workspace.json` 的 `context_menu` 项相同,`theme::region::spec_dump()` 因此多了 `context_menu` 一项(外壳区域由 7 个变 8 个),跨仓库一致性检查脚本要同步。
+- 新增 `interaction::menu`:菜单项 `item` / `item_locked` / `item_row` / `item_row_fill` / `icon_leading`、分隔线 `separator`、外框 `shell`;iced 自绘浮层 `MenuAnchor`(`clamped`)、`OverlayRow<Msg>`、`rows_size`、`view_rows`、`overlay_shell`(外框 + 整窗遮罩 + 定位,**与只是外框的 `shell` 不是一回事**)。来自 Dozer `chrome/menu.rs` 与 Digger `adapters/menu_overlay.rs`;Dozer 依赖本地噪点层的 `shell_frosted` 不在此。
+- 新增 `interaction::panel_tabs`:面板页签 `panel_tab` / `PanelTabArgs`、`tab_label`、`tab_container_style`、溢出入口 `tab_overflow_button`、溢出菜单 `tab_overflow_menu` / `TabOverflowMenuArgs` / `TabOverflowEntry`、macOS 原生菜单项 `tab_overflow_items`,常量 `PANEL_TAB_PAD_LEFT/X/Y`、`NO_TAB_W_LIMIT`,纯函数 `combined_hover` / `title_color` / `close_color` / `tab_overflow_menu_width`(宽度公式不随 UI 缩放,夹在 220–560)。来自 Dozer `chrome/tab_widget.rs`(预览专属的三个模式切换按钮不在此)。悬停进度 `hover_t` 由调用方给。
+- 新增 `feedback::tooltip::controlled_tooltip` 与 `TOOLTIP_DELAY`(2 秒):页签 / 顶栏标题全称气泡,控件树结构不随 `show` 翻转。
+- 新增 `theme::font::top_bar_font()`:系统默认字体的 Medium 档。
+
 ## 0.4.6
 
 - 新增 `native_menu`(仅 macOS):原生 NSMenu 右键 / 弹出菜单,自 Dozer 的 `dozer-app::chrome::native_menu` 原样搬入,供 Dozer 与 Digger 共用。原生菜单是真窗口层级,天然浮在 wry 原生页面之上,不需要"弹出时把页面藏起来"。接口:`Item`(`Entry` / `Separator`)、`show` / `show_align_no_icon_left`(同步阻塞,选中返回对应消息)、`install_content_view`(窗口初始化时登记一次;**签名变化**:接收 `&dyn raw_window_handle::HasWindowHandle`,不再依赖 `winit`)。日志改用 `tracing`(target `byteui::native_menu`)。依赖 `objc2` / `objc2-app-kit` / `objc2-foundation` / `objc2-quartz-core` / `resvg` / `usvg` / `tiny-skia`(后三者与 iced_wgpu 同一精确版本),全部只在 macOS 目标上引入。
