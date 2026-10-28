@@ -69,6 +69,15 @@ pub fn title() -> u32 {
     scale(current().title)
 }
 
+/// 页签 / 顶栏标题字体:系统默认字体的 Medium 档(原 Dozer `app/view.rs::top_bar_font`,
+/// Digger 的页签部件各抄过一份 `tab_font()`)。
+pub fn top_bar_font() -> iced_widget::core::Font {
+    iced_widget::core::Font {
+        weight: iced_widget::core::font::Weight::Medium,
+        ..iced_widget::core::Font::default()
+    }
+}
+
 /// 把设计基准字号按全局 scale 折算成实际像素字号（四舍五入）。
 fn scale(base: u32) -> u32 {
     ((base as f32) * super::icon_size::scale()).round() as u32
@@ -106,5 +115,12 @@ mod tests {
         assert_eq!(current().body, 99);
         // 复原，避免污染同进程里跑在本测试之后的其它测试。
         set_theme(FontTokens::byteboy2077());
+    }
+
+    #[test]
+    fn top_bar_font_is_the_default_family_at_medium_weight() {
+        let f = top_bar_font();
+        assert_eq!(f.weight, iced_widget::core::font::Weight::Medium);
+        assert_eq!(f.family, iced_widget::core::Font::default().family);
     }
 }
