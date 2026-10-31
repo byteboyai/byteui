@@ -139,7 +139,9 @@ fn glyph(
 }
 
 fn accents(c: &color::ColorTokens) -> [iced::Color; 8] {
-    [c.cyan, c.green, c.purple, c.orange, c.magenta, c.blue, c.lime, c.teal]
+    [
+        c.cyan, c.green, c.purple, c.orange, c.magenta, c.blue, c.lime, c.teal,
+    ]
 }
 
 fn main() -> iced::Result {

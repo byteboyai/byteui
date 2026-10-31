@@ -23,9 +23,33 @@ use iced_widget::core::{Color, Element, Length, Point};
 use iced_widget::core::{Rectangle, mouse, window};
 use iced_widget::{column, container, text};
 
-/// 建议的动画帧间隔(~60fps)。宿主拿它去 `subscription()` 或自己定节奏。
+thread_local! {
+    static HOST_PAUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// 在当前窗口的同步视图构建期间暂停所有后代曲线动画。
+/// 状态在返回或 panic 时恢复；不会跨窗口、线程或异步任务传播。
+/// 隐藏面板应移出视图树；保留在树内的面板可再嵌套暂停作用域。
+pub fn with_animation_paused<T>(paused: bool, build: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            HOST_PAUSED.with(|state| state.set(self.0));
+        }
+    }
+    let previous = HOST_PAUSED.with(|state| state.replace(state.get() || paused));
+    let _restore = Restore(previous);
+    build()
+}
+
+/// 目标动画帧率。自驱动动画按这个节奏请求重绘；高刷新率屏幕不会把节奏
+/// 自动抬到刷新率。
+pub const TARGET_FPS: u32 = 30;
+
+/// 建议的动画帧间隔（默认 30 FPS，约 33.3ms）。宿主拿它去 `subscription()`
+/// 或自己定节奏。
 pub fn frame_interval() -> Duration {
-    Duration::from_millis(16)
+    Duration::from_secs_f32(1.0 / TARGET_FPS as f32)
 }
 
 /// 返回一个按 [`frame_interval`] 周期性产生消息的订阅,`f` 把每个 tick 的
@@ -796,10 +820,35 @@ pub fn view_animated_with_color<'a, Message: 'a>(
     size: f32,
     color: Color,
 ) -> Element<'a, Message, iced_widget::Theme, iced_renderer::Renderer> {
-    Canvas::new(AnimatedLoader { curve, color })
-        .width(Length::Fixed(size))
-        .height(Length::Fixed(size))
-        .into()
+    view_animated_with_color_paused(curve, size, color, false)
+}
+
+/// [`view_animated`] 的暂停参数版本：`paused = true` 时停止自发续订重绘，
+/// 曲线相位冻结在当前帧。面板隐藏、窗口最小化/失活时由宿主传入 `true`，
+/// 恢复时传 `false`（宿主需要触发一次重绘让组件感知状态变化）。
+pub fn view_animated_paused<'a, Message: 'a>(
+    curve: Curve,
+    size: f32,
+    paused: bool,
+) -> Element<'a, Message, iced_widget::Theme, iced_renderer::Renderer> {
+    view_animated_with_color_paused(curve, size, crate::theme::color::current().cream, paused)
+}
+
+/// [`view_animated_with_color`] 的暂停参数版本。
+pub fn view_animated_with_color_paused<'a, Message: 'a>(
+    curve: Curve,
+    size: f32,
+    color: Color,
+    paused: bool,
+) -> Element<'a, Message, iced_widget::Theme, iced_renderer::Renderer> {
+    Canvas::new(AnimatedLoader {
+        curve,
+        color,
+        paused: paused || HOST_PAUSED.with(|state| state.get()),
+    })
+    .width(Length::Fixed(size))
+    .height(Length::Fixed(size))
+    .into()
 }
 
 /// 一个居中的 loading 组合:数学曲线动画 + 一行 `dim` 文案竖排,外层容器
@@ -855,22 +904,64 @@ impl<Message> canvas::Program<Message, iced_widget::Theme, iced_renderer::Render
 }
 
 /// [`view_animated`] 的内部 program:起始时间记在 `State` 里(树 diff 时该
-/// `State` 会随 canvas 节点保留,`start` 不会被每帧重建),`update` 对每个
-/// `RedrawRequested` 再请求一次重绘,形成自维持的动画循环。
+/// `State` 会随 canvas 节点保留,`start` 不会被每帧重建),`update` 在每次
+/// `RedrawRequested` 后只请求**下一个 30 FPS 期限**的重绘,而不是立刻再画
+/// 一帧。`paused` 为真时不续订,`elapsed` 冻结在暂停时刻。
 struct AnimatedLoader {
     curve: Curve,
     color: Color,
+    paused: bool,
 }
 
 struct AnimatedState {
+    /// 当前活跃相位的起点；暂停/恢复会平移它，让曲线相位不跳变。
     start: std::time::Instant,
+    /// 已安排的下一帧期限。`None` = 还没有排程或刚恢复。
+    scheduled: Option<std::time::Instant>,
+    /// 暂停时冻结的 elapsed。
+    paused_elapsed: Duration,
+    paused: bool,
 }
 
 impl Default for AnimatedState {
     fn default() -> Self {
         AnimatedState {
             start: std::time::Instant::now(),
+            scheduled: None,
+            paused_elapsed: Duration::ZERO,
+            paused: false,
         }
+    }
+}
+
+impl AnimatedState {
+    fn elapsed(&self, now: std::time::Instant) -> Duration {
+        if self.paused {
+            self.paused_elapsed
+        } else {
+            now.saturating_duration_since(self.start)
+        }
+    }
+}
+
+/// 计算下一次重绘期限。提前重绘保留既有期限；准点时保持固定节拍（上一期限 + 间隔）；
+/// 迟到时不补画积压帧，直接从当前时刻重新排一个间隔。
+fn next_deadline(
+    now: std::time::Instant,
+    scheduled: Option<std::time::Instant>,
+    interval: Duration,
+) -> std::time::Instant {
+    match scheduled {
+        Some(last) if now < last => last,
+        Some(last) => {
+            let candidate = last + interval;
+            if candidate <= now {
+                now + interval
+            } else {
+                candidate
+            }
+        }
+        None => now + interval,
     }
 }
 
@@ -881,18 +972,37 @@ impl<Message> canvas::Program<Message, iced_widget::Theme, iced_renderer::Render
 
     fn update(
         &self,
-        _state: &mut Self::State,
+        state: &mut Self::State,
         event: &canvas::Event,
         _bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Option<canvas::Action<Message>> {
-        if matches!(
-            event,
-            canvas::Event::Window(window::Event::RedrawRequested(_))
-        ) {
-            return Some(canvas::Action::request_redraw());
+        let canvas::Event::Window(window::Event::RedrawRequested(now)) = event else {
+            return None;
+        };
+        let now = *now;
+
+        if self.paused {
+            if !state.paused {
+                state.paused = true;
+                state.paused_elapsed = now.saturating_duration_since(state.start);
+                state.scheduled = None;
+            }
+            // 暂停期间不自发续订。
+            return None;
         }
-        None
+
+        if state.paused {
+            // 恢复：平移起点，冻结的相位继续，不追赶暂停期间积压的帧。
+            state.paused = false;
+            state.start = now.checked_sub(state.paused_elapsed).unwrap_or(now);
+            state.paused_elapsed = Duration::ZERO;
+            state.scheduled = None;
+        }
+
+        let deadline = next_deadline(now, state.scheduled, frame_interval());
+        state.scheduled = Some(deadline);
+        Some(canvas::Action::request_redraw_at(deadline))
     }
 
     fn draw(
@@ -907,7 +1017,7 @@ impl<Message> canvas::Program<Message, iced_widget::Theme, iced_renderer::Render
             renderer,
             bounds,
             self.curve.spec(),
-            state.start.elapsed(),
+            state.elapsed(std::time::Instant::now()),
             self.color,
         )]
     }
@@ -1088,21 +1198,26 @@ mod tests {
         assert!(p.x < 50.0, "expected left-edge x < 50, got {}", p.x);
     }
 
-    /// T12 自动化:自驱动动画必须**对每个 RedrawRequested 都请求下一次重绘**,
-    /// 否则动画只画一帧就停(对应验收"任务执行期间 UI 至少产生多次 redraw")。
-    /// 这里连喂多个 `RedrawRequested`,逐次断言都请求了 `NextFrame`。
+    /// T12 自动化（P5 更新）:自驱动动画必须按下一个 30 FPS 期限续订,而不是
+    /// 对每次 `RedrawRequested` 立刻再画一帧。这里连喂多个 `RedrawRequested`,
+    /// 逐次断言请求的是 `At(deadline)` 且间隔为 `frame_interval()`。
     #[test]
-    fn animated_loader_requests_redraw_on_every_redraw_event() {
+    fn animated_loader_schedules_next_frame_instead_of_immediate_redraw() {
         let loader = AnimatedLoader {
             curve: Curve::RoseThree,
             color: Color::WHITE,
+            paused: false,
         };
         let mut state = AnimatedState::default();
         let program = &loader;
+        let interval = frame_interval();
+        assert_eq!(interval, Duration::from_secs_f32(1.0 / 30.0));
+
+        let t0 = iced_widget::core::time::Instant::now();
         for i in 0..5 {
-            let event = canvas::Event::Window(window::Event::RedrawRequested(
-                iced_widget::core::time::Instant::now(),
-            ));
+            // 每次都恰好落在上一期限上，保持固定 30 FPS 节拍。
+            let now = t0 + interval * i;
+            let event = canvas::Event::Window(window::Event::RedrawRequested(now));
             let Some(action) = canvas::Program::<()>::update(
                 program,
                 &mut state,
@@ -1114,12 +1229,15 @@ mod tests {
             };
             let (message, redraw, _status) = action.into_inner();
             assert!(message.is_none(), "动画不应发布消息");
-            assert_eq!(
-                redraw,
-                window::RedrawRequest::NextFrame,
-                "第 {i} 次 RedrawRequested 未请求重绘"
-            );
+            match redraw {
+                window::RedrawRequest::At(at) => {
+                    assert_eq!(at, now + interval, "第 {i} 次未按 30 FPS 排下一帧");
+                    assert_ne!(at, now, "不应立即重绘");
+                }
+                other => panic!("第 {i} 次期望 At(deadline)，实际 {other:?}"),
+            }
         }
+
         // 非重绘事件不触发重绘(动画只由重绘事件自维持,不被其它输入驱动)。
         let cursor_event = canvas::Event::Mouse(mouse::Event::CursorMoved {
             position: Point::ORIGIN,
@@ -1132,5 +1250,126 @@ mod tests {
             mouse::Cursor::Unavailable,
         );
         assert!(action.is_none(), "非重绘事件不应请求重绘");
+    }
+
+    /// 迟到的重绘事件不补画积压帧：直接从当前时刻重新排一个完整间隔。
+    #[test]
+    fn next_deadline_does_not_catch_up_after_late_event() {
+        let interval = frame_interval();
+        let base = std::time::Instant::now();
+
+        let first = next_deadline(base, None, interval);
+        assert_eq!(first, base + interval);
+
+        // 准点：固定节拍。
+        let on_time = base + interval;
+        assert_eq!(
+            next_deadline(on_time, Some(first), interval),
+            on_time + interval
+        );
+
+        // 提前：仍等原定期限，不提前画。
+        let early = base + interval / 2;
+        assert_eq!(next_deadline(early, Some(first), interval), first);
+
+        // 迟到：从 now 重新排，不连续追赶多个期限。
+        let late = base + interval * 5;
+        assert_eq!(next_deadline(late, Some(first), interval), late + interval);
+    }
+
+    #[test]
+    fn host_pause_scope_is_nested_and_restored_after_panic() {
+        assert!(!HOST_PAUSED.with(|state| state.get()));
+        with_animation_paused(true, || {
+            assert!(HOST_PAUSED.with(|state| state.get()));
+            with_animation_paused(false, || assert!(HOST_PAUSED.with(|state| state.get())));
+        });
+        let result = std::panic::catch_unwind(|| {
+            with_animation_paused(true, || panic!("intentional unwind"));
+        });
+        assert!(result.is_err());
+        assert!(!HOST_PAUSED.with(|state| state.get()));
+    }
+
+    #[test]
+    fn repeated_early_redraws_preserve_pending_deadline() {
+        let base = std::time::Instant::now();
+        let interval = frame_interval();
+        let first = next_deadline(base, None, interval);
+        let mut deadline = first;
+        for ms in [5, 10, 15, 20, 25] {
+            deadline = next_deadline(base + Duration::from_millis(ms), Some(deadline), interval);
+            assert_eq!(deadline, first);
+        }
+        assert_eq!(
+            next_deadline(first, Some(deadline), interval),
+            first + interval
+        );
+    }
+
+    /// 暂停时不续订；恢复后从冻结相位继续，不追赶暂停期间积压的帧。
+    #[test]
+    fn pause_freezes_phase_and_resume_does_not_catch_up() {
+        let interval = frame_interval();
+        let base = std::time::Instant::now();
+        let bounds = Rectangle::new(Point::ORIGIN, iced_widget::core::Size::new(48.0, 48.0));
+
+        let mut state = AnimatedState {
+            start: base,
+            scheduled: None,
+            paused_elapsed: Duration::ZERO,
+            paused: false,
+        };
+
+        // 暂停：第一次重绘事件进入暂停态，不返回 Action。
+        let paused_loader = AnimatedLoader {
+            curve: Curve::RoseThree,
+            color: Color::WHITE,
+            paused: true,
+        };
+        let pause_at = base + interval * 3;
+        let action = canvas::Program::<()>::update(
+            &paused_loader,
+            &mut state,
+            &canvas::Event::Window(window::Event::RedrawRequested(pause_at)),
+            bounds,
+            mouse::Cursor::Unavailable,
+        );
+        assert!(action.is_none(), "暂停后不应续订重绘");
+        assert!(state.paused);
+        assert_eq!(state.paused_elapsed, pause_at - base);
+
+        // 暂停期间再来事件也不续订，相位保持冻结。
+        let later = base + interval * 30;
+        let action = canvas::Program::<()>::update(
+            &paused_loader,
+            &mut state,
+            &canvas::Event::Window(window::Event::RedrawRequested(later)),
+            bounds,
+            mouse::Cursor::Unavailable,
+        );
+        assert!(action.is_none());
+        assert_eq!(state.elapsed(later), pause_at - base);
+
+        // 恢复：重新从当前时刻排一个间隔，冻结相位继续。
+        let resumed_loader = AnimatedLoader {
+            curve: Curve::RoseThree,
+            color: Color::WHITE,
+            paused: false,
+        };
+        let resume_at = base + interval * 40;
+        let Some(action) = canvas::Program::<()>::update(
+            &resumed_loader,
+            &mut state,
+            &canvas::Event::Window(window::Event::RedrawRequested(resume_at)),
+            bounds,
+            mouse::Cursor::Unavailable,
+        ) else {
+            panic!("恢复后应重新续订");
+        };
+        let (_, redraw, _) = action.into_inner();
+        assert_eq!(redraw, window::RedrawRequest::At(resume_at + interval));
+        // 相位 = 恢复时刻 - 平移后的起点 = 暂停时的 elapsed，没有跳过暂停时长。
+        assert_eq!(state.elapsed(resume_at), pause_at - base);
     }
 }

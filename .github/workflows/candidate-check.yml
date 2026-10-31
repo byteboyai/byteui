@@ -1,0 +1,162 @@
+name: Candidate compatibility check
+
+# 候选组合门禁(BUI-04):把候选 ByteUI(以及可选的 ByteHost / Dozer 快照)精确
+# SHA 以临时 [patch] 接入消费图,生成临时锁文件后跑 locked 构建。
+#
+# 与产品自己的 consumer-check 分工:
+#   - consumer-check = 发布组合:按锁文件里的固定 tag/SHA 验证。
+#   - 本 workflow      = 候选组合:验证尚未发布的 ByteUI 改动能否被两产品编译。
+#
+# 输入全部是精确 SHA(或 tag),不含 "latest";缺任何一个 checkout 失败即失败,
+# 不允许静默跳过后给出假绿灯。
+
+on:
+  workflow_dispatch:
+    inputs:
+      byteui_ref:
+        description: 候选 ByteUI 精确 SHA / tag
+        required: true
+      bytehost_ref:
+        description: 候选 ByteHost 精确 SHA / tag(留空则用消费方锁文件里的版本)
+        required: false
+        default: ""
+      dozer_ref:
+        description: 候选 Dozer 精确 SHA / tag
+        required: true
+      digger_ref:
+        description: 候选 Digger 精确 SHA / tag
+        required: true
+
+jobs:
+  candidate:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout byteui
+        uses: actions/checkout@v4
+        with:
+          repository: byteboyai/byteui
+          ref: ${{ inputs.byteui_ref }}
+          path: ws/byteui
+
+      - name: Checkout bytehost
+        if: inputs.bytehost_ref != ''
+        uses: actions/checkout@v4
+        with:
+          repository: byteboyai/bytehost
+          ref: ${{ inputs.bytehost_ref }}
+          path: ws/bytehost
+
+      - name: Checkout dozer
+        uses: actions/checkout@v4
+        with:
+          repository: byteboyai/dozer
+          ref: ${{ inputs.dozer_ref }}
+          path: ws/dozer
+
+      - name: Checkout digger
+        uses: actions/checkout@v4
+        with:
+          repository: byteboyai/digger
+          ref: ${{ inputs.digger_ref }}
+          path: ws/digger
+
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal
+
+      - name: 写临时 patch 配置(不改用户全局 Cargo 配置)
+        run: |
+          set -euo pipefail
+          root="$GITHUB_WORKSPACE/ws"
+          # 每个消费仓库都在自己的 .cargo/config.toml 里写临时 patch;
+          # CI 的 checkout 是一次性的,不会污染开发机。
+          for repo in dozer digger; do
+            mkdir -p "$root/$repo/.cargo"
+            cat > "$root/$repo/.cargo/config.toml" <<EOF
+          [patch."https://github.com/byteboyai/byteui"]
+          byteui = { path = "$root/byteui" }
+
+          [patch."https://github.com/byteboyai/dozer"]
+          dozer-client = { path = "$root/dozer/crates/dozer-client" }
+          dozer-core = { path = "$root/dozer/crates/dozer-core" }
+          dozer-hook = { path = "$root/dozer/crates/dozer-hook" }
+          dozer-i18n = { path = "$root/dozer/crates/dozer-i18n" }
+          dozer-mcp = { path = "$root/dozer/crates/dozer-mcp" }
+          dozer-model = { path = "$root/dozer/crates/dozer-model" }
+          dozer-panel-agent = { path = "$root/dozer/crates/dozer-panel-agent" }
+          dozer-panel-browser = { path = "$root/dozer/crates/dozer-panel-browser" }
+          dozer-panel-conversations = { path = "$root/dozer/crates/dozer-panel-conversations" }
+          dozer-panel-files = { path = "$root/dozer/crates/dozer-panel-files" }
+          dozer-panel-group-chat = { path = "$root/dozer/crates/dozer-panel-group-chat" }
+          dozer-panel-host = { path = "$root/dozer/crates/dozer-panel-host" }
+          dozer-panel-preview = { path = "$root/dozer/crates/dozer-panel-preview" }
+          dozer-panel-project = { path = "$root/dozer/crates/dozer-panel-project" }
+          dozer-panel-term = { path = "$root/dozer/crates/dozer-panel-term" }
+          dozer-panel-todo = { path = "$root/dozer/crates/dozer-panel-todo" }
+          dozer-panel-usage = { path = "$root/dozer/crates/dozer-panel-usage" }
+          dozer-preview-core = { path = "$root/dozer/crates/dozer-preview-core" }
+          dozer-services = { path = "$root/dozer/crates/dozer-services" }
+          dozer-store-project = { path = "$root/dozer/crates/dozer-store-project" }
+          dozerd = { path = "$root/dozer/crates/dozerd" }
+          EOF
+            if [ -d "$root/bytehost" ]; then
+              cat >> "$root/$repo/.cargo/config.toml" <<EOF
+
+          [patch."https://github.com/byteboyai/bytehost"]
+          bytehost-apps = { path = "$root/bytehost/crates/bytehost-apps" }
+          bytehost-client = { path = "$root/bytehost/crates/bytehost-client" }
+          bytehost-core = { path = "$root/bytehost/crates/bytehost-core" }
+          bytehost-desktop = { path = "$root/bytehost/crates/bytehost-desktop" }
+          bytehost-panel = { path = "$root/bytehost/crates/bytehost-panel" }
+          bytehost-webview = { path = "$root/bytehost/crates/bytehost-webview" }
+          bytehost-chrome = { path = "$root/bytehost/crates/bytehost-chrome" }
+          bytehost-settings = { path = "$root/bytehost/crates/bytehost-settings" }
+          bytehost-settings-ui = { path = "$root/bytehost/crates/bytehost-settings-ui" }
+          EOF
+            fi
+          done
+
+      - name: 记录输入
+        run: |
+          set -euo pipefail
+          {
+            echo "byteui=$(git -C ws/byteui rev-parse HEAD)"
+            echo "bytehost=$(git -C ws/bytehost rev-parse HEAD 2>/dev/null || echo 'not checked out')"
+            echo "dozer=$(git -C ws/dozer rev-parse HEAD)"
+            echo "digger=$(git -C ws/digger rev-parse HEAD)"
+          } | tee candidate-shas.txt
+
+      - name: Dozer 候选组合(临时锁 → locked 构建)
+        run: |
+          set -euo pipefail
+          cd ws/dozer
+          cp Cargo.lock Cargo.lock.orig
+          # 临时锁文件:只为这次候选组合生成;成功或失败都恢复原文件。
+          trap 'mv Cargo.lock.orig Cargo.lock' EXIT
+          cargo update -p byteui --offline 2>/dev/null || cargo update -p byteui
+          cargo tree --locked -i byteui > "$GITHUB_WORKSPACE/dozer-byteui-tree.txt"
+          cargo metadata --locked --format-version 1 > "$GITHUB_WORKSPACE/dozer-metadata.json"
+          cargo check --locked --workspace --all-targets
+
+      - name: Digger 候选组合(临时锁 → locked 构建)
+        run: |
+          set -euo pipefail
+          cd ws/digger
+          cp Cargo.lock Cargo.lock.orig
+          trap 'mv Cargo.lock.orig Cargo.lock' EXIT
+          cargo update -p byteui --offline 2>/dev/null || cargo update -p byteui
+          cargo update -p dozer-client --offline 2>/dev/null || cargo update -p dozer-client
+          cargo tree --locked -i byteui > "$GITHUB_WORKSPACE/digger-byteui-tree.txt"
+          cargo metadata --locked --format-version 1 > "$GITHUB_WORKSPACE/digger-metadata.json"
+          cargo check --locked --workspace --all-targets
+
+      - name: 上传解析图与 SHA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-resolution
+          path: |
+            candidate-shas.txt
+            dozer-byteui-tree.txt
+            digger-byteui-tree.txt
+            dozer-metadata.json
+            digger-metadata.json

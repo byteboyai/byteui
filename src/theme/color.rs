@@ -118,16 +118,91 @@ impl ColorTokens {
     }
 }
 
-static CURRENT: RwLock<ColorTokens> = RwLock::new(ColorTokens::byteboy2077());
+/// 调色板来源：命名方案(Dark/Light)或任意自定义 palette。
+///
+/// 任意 `set_theme` 换上来的颜色不能被说成是某个内置方案；网页/终端只消费
+/// 明暗提示(`scheme`)，来源由本枚举单独表达。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaletteSource {
+    Named(ColorScheme),
+    Custom,
+}
+
+/// 一次主题变更的完整快照：颜色、明暗提示、来源与单调递增的 revision。
+///
+/// 颜色与提示来自同一次写入，因此不会出现"新颜色 + 旧方案名"的中间态。
+/// revision 供异步投递(如 WebView 注入)丢弃过期更新。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ThemeSnapshot {
+    pub colors: ColorTokens,
+    /// 供网页 `color-scheme` 与终端 ANSI 主题使用的明暗提示。
+    /// 命名方案直接取方案名；自定义 palette 由背景亮度推导。
+    pub scheme: ColorScheme,
+    pub source: PaletteSource,
+    pub revision: u64,
+}
+
+impl ThemeSnapshot {
+    pub fn is_light(&self) -> bool {
+        self.scheme == ColorScheme::Light
+    }
+}
+
+/// 单锁保存颜色与方案元数据：每次有效变更原子替换快照并递增 revision。
+static SNAPSHOT: RwLock<ThemeSnapshot> = RwLock::new(ThemeSnapshot {
+    colors: ColorTokens::byteboy2077(),
+    scheme: ColorScheme::Dark,
+    source: PaletteSource::Named(ColorScheme::Dark),
+    revision: 0,
+});
+
+/// 自定义 palette 的明暗提示：按 `bg` 的相对亮度判断(阈值 0.5)。
+/// 只用于兼容旧的 `current_scheme()` 与网页 `color-scheme`，不代表这是
+/// 某个命名方案——来源看 [`ThemeSnapshot::source`]。
+fn scheme_hint(tokens: &ColorTokens) -> ColorScheme {
+    let bg = tokens.bg;
+    let luminance = 0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b;
+    if luminance >= 0.5 {
+        ColorScheme::Light
+    } else {
+        ColorScheme::Dark
+    }
+}
+
+fn write_snapshot(colors: ColorTokens, scheme: ColorScheme, source: PaletteSource) {
+    let mut snapshot = SNAPSHOT.write().expect("byteui color RwLock poisoned");
+    snapshot.colors = colors;
+    snapshot.scheme = scheme;
+    snapshot.source = source;
+    snapshot.revision = snapshot.revision.wrapping_add(1);
+}
+
+/// 当前生效的完整主题快照。调用方应在一次视图构建里取一次，避免同一帧
+/// 读到两次不同 revision 的颜色。
+pub fn current_snapshot() -> ThemeSnapshot {
+    *SNAPSHOT.read().expect("byteui color RwLock poisoned")
+}
+
+/// 当前快照的 revision；每次有效主题变更递增。
+pub fn revision() -> u64 {
+    SNAPSHOT
+        .read()
+        .expect("byteui color RwLock poisoned")
+        .revision
+}
 
 /// 当前生效的颜色 token(默认 ByteBoy2077)。
 pub fn current() -> ColorTokens {
-    *CURRENT.read().expect("byteui color RwLock poisoned")
+    SNAPSHOT
+        .read()
+        .expect("byteui color RwLock poisoned")
+        .colors
 }
 
-/// 整体替换当前颜色 token——供未来 ByteBoy 产品换主题用,组件代码不用改。
+/// 整体替换当前颜色 token——供产品换任意自定义 palette。明暗提示按背景
+/// 亮度推导，来源标记为 [`PaletteSource::Custom`]，不会冒充内置方案。
 pub fn set_theme(tokens: ColorTokens) {
-    *CURRENT.write().expect("byteui color RwLock poisoned") = tokens;
+    write_snapshot(tokens, scheme_hint(&tokens), PaletteSource::Custom);
 }
 
 /// 当前生效的命名配色方案。`set_theme` 能换任意 `ColorTokens`，但不知道
@@ -141,25 +216,23 @@ pub enum ColorScheme {
     Light,
 }
 
-static CURRENT_SCHEME: RwLock<ColorScheme> = RwLock::new(ColorScheme::Dark);
-
-/// 当前生效的命名配色方案(默认 `Dark`)。
+/// 当前生效的明暗提示(默认 `Dark`)。自定义 palette 返回按背景亮度推导的
+/// 提示，来源请读 [`current_snapshot`] 的 `source`。
 pub fn current_scheme() -> ColorScheme {
-    *CURRENT_SCHEME
+    SNAPSHOT
         .read()
-        .expect("byteui color scheme RwLock poisoned")
+        .expect("byteui color RwLock poisoned")
+        .scheme
 }
 
-/// 按命名方案整体切换 token(同时更新 `current_scheme()`)。设置弹窗选中
-/// 即调这个,立即全局生效,不需要重启。
+/// 按命名方案整体切换 token(同时更新明暗提示与来源)。设置弹窗选中
+/// 即调这个,立即全局生效,不需要重启。颜色与方案名在同一次写锁里替换。
 pub fn set_scheme(scheme: ColorScheme) {
-    set_theme(match scheme {
+    let tokens = match scheme {
         ColorScheme::Dark => ColorTokens::byteboy2077(),
         ColorScheme::Light => ColorTokens::byteboy2077_light(),
-    });
-    *CURRENT_SCHEME
-        .write()
-        .expect("byteui color scheme RwLock poisoned") = scheme;
+    };
+    write_snapshot(tokens, scheme, PaletteSource::Named(scheme));
 }
 
 #[derive(Serialize, Deserialize)]
@@ -203,18 +276,17 @@ pub fn mix(a: Color, b: Color, t: f32) -> Color {
 }
 
 #[cfg(test)]
+pub(super) fn restore_test_snapshot(snapshot: ThemeSnapshot) {
+    *SNAPSHOT.write().unwrap_or_else(|e| e.into_inner()) = snapshot;
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use crate::theme::test_support::lock_global_state;
 
-    /// `CURRENT`/`CURRENT_SCHEME` 是进程级共享 static，cargo test 默认多线程
-    /// 并跑；不加锁的话一个测试的"设置再断言"窗口会被另一线程的写入插进来
-    /// (已实测：新增的 scheme 测试上线当天就在本地跑出过这种交叉污染)。
-    /// 所有读/写这两个 static 的测试都先拿这把锁，序列化执行。
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    fn lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    fn lock() -> crate::theme::test_support::GlobalStateGuard {
+        lock_global_state()
     }
 
     #[test]
@@ -311,5 +383,52 @@ mod tests {
         std::fs::write(&bad, "not json").unwrap();
         init_scheme(&bad);
         assert_eq!(current_scheme(), ColorScheme::Dark);
+    }
+
+    /// 快照一致性:颜色、明暗提示、来源与 revision 来自同一次写入。
+    #[test]
+    fn snapshot_is_consistent_and_revision_monotonic() {
+        let _guard = lock();
+        set_scheme(ColorScheme::Dark);
+        let before = current_snapshot();
+
+        set_scheme(ColorScheme::Light);
+        let after = current_snapshot();
+        assert_eq!(after.colors, ColorTokens::byteboy2077_light());
+        assert_eq!(after.scheme, ColorScheme::Light);
+        assert_eq!(after.source, PaletteSource::Named(ColorScheme::Light));
+        assert_eq!(after.revision, before.revision + 1);
+        // 同一个快照里的颜色与提示必须一致,不存在"新颜色 + 旧方案名"。
+        assert_eq!(current(), after.colors);
+        assert_eq!(current_scheme(), after.scheme);
+        assert_eq!(revision(), after.revision);
+
+        set_scheme(ColorScheme::Dark);
+    }
+
+    /// 任意自定义 palette 不能被说成命名方案;明暗提示按背景亮度给出。
+    #[test]
+    fn custom_palette_is_marked_custom_and_hints_by_luminance() {
+        let _guard = lock();
+        set_scheme(ColorScheme::Dark);
+
+        let mut dark_custom = ColorTokens::byteboy2077();
+        dark_custom.bg = Color::from_rgb8(0x10, 0x10, 0x10);
+        set_theme(dark_custom);
+        let snap = current_snapshot();
+        assert_eq!(snap.source, PaletteSource::Custom);
+        assert_eq!(snap.scheme, ColorScheme::Dark);
+        assert_eq!(snap.colors.bg, dark_custom.bg);
+
+        let mut light_custom = ColorTokens::byteboy2077();
+        light_custom.bg = Color::from_rgb8(0xf5, 0xf5, 0xf5);
+        set_theme(light_custom);
+        let snap = current_snapshot();
+        assert_eq!(snap.source, PaletteSource::Custom);
+        assert_eq!(snap.scheme, ColorScheme::Light);
+        assert!(snap.is_light());
+        assert_eq!(snap.colors.bg, light_custom.bg);
+
+        set_scheme(ColorScheme::Dark);
     }
 }

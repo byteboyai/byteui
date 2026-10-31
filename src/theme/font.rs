@@ -91,6 +91,7 @@ mod tests {
     /// 改动必须同步确认所有消费方。
     #[test]
     fn byteboy2077_locked_values() {
+        let _guard = crate::theme::test_support::lock_global_state();
         let t = FontTokens::byteboy2077();
         assert_eq!(t.dot_sm, 10);
         assert_eq!(t.caption_sm, 11);
@@ -103,12 +104,14 @@ mod tests {
 
     #[test]
     fn current_defaults_to_byteboy2077() {
+        let _guard = crate::theme::test_support::lock_global_state();
         let c = current();
         assert_eq!(c.body, FontTokens::byteboy2077().body);
     }
 
     #[test]
     fn set_theme_replaces_current_and_is_visible_globally() {
+        let _guard = crate::theme::test_support::lock_global_state();
         let mut custom = FontTokens::byteboy2077();
         custom.body = 99;
         set_theme(custom);
@@ -119,6 +122,7 @@ mod tests {
 
     #[test]
     fn top_bar_font_is_the_default_family_at_medium_weight() {
+        let _guard = crate::theme::test_support::lock_global_state();
         let f = top_bar_font();
         assert_eq!(f.weight, iced_widget::core::font::Weight::Medium);
         assert_eq!(f.family, iced_widget::core::Font::default().family);

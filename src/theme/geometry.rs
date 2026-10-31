@@ -297,11 +297,9 @@ mod tests {
 
     /// 串行化会改动/读取**全局几何主题**的测试。`set_theme` 改的是进程级全局,
     /// 若与读取 `min_window_width()` 的测试并行交错,读数会在中途被改成 999。
-    /// 用一个测试专用 `Mutex` 让这些测试彼此互斥(仅测试用,不影响运行时)。
-    static THEME_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn theme_guard() -> std::sync::MutexGuard<'static, ()> {
-        THEME_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    // 与其它主题测试共享状态恢复 guard。
+    fn theme_guard() -> crate::theme::test_support::GlobalStateGuard {
+        crate::theme::test_support::lock_global_state()
     }
 
     /// 锁值快照：`byteboy2077()` 的每个字段值不得随意改动；

@@ -1,5 +1,17 @@
 # Changelog
 
+## 未发布
+
+- **行为变化:** `theme::icon_size` 的缩放入口统一走 `normalize_scale`:非有限数(NaN/±∞)、零和负数一律拒绝并保留原有效值,有限正数钳制到 `[SCALE_MIN, SCALE_MAX]`。此前 `set_scale(f32::NAN)` 会把 NaN 写入全局缩放,环境变量 `BYTEUI_ICON_SCALE=99` 会直接超出上限。
+- 新增公开纯函数 `theme::icon_size::normalize_scale(f32) -> Option<f32>`,供宿主在写入前后复用同一套校验。
+- `init_scale` 现在把有效的环境覆盖**物化**到运行时状态,初始化后 accessor 不再逐次读进程环境;`reset_scale` 回到本次启动的环境覆盖,没有覆盖时回到当前 token 基准(运行时 `set_theme` 换 token 后仍然跟随,不会被启动值冻结)。落盘格式不变。
+- `zoom_by` 拒绝非有限/非正乘数以及乘法溢出,不写入状态。
+- **破坏性变更:** `native_menu::show` / `show_align_no_icon_left` / `install_content_view` 已删除,所有调用改用 `native_menu::show_for_window` / `show_align_no_icon_left_for_window`(仅 macOS):显式借用调用方窗口句柄弹菜单,不再依赖全局登记的单槽指针;主线程/AppKit view 校验失败返回 `None`,不回退到其它窗口。Dozer 用 `Weak<Window>`(浮窗销毁后自动失效),Digger 用 `window::run` + `Task` 回投选择结果。
+- **行为变化:** `feedback::math_curve` 的自驱动动画从“每次重绘立即续订”改为按 30 FPS 期限 `request_redraw_at`;迟到事件不补画积压帧。`frame_interval()` 由 16ms 改为约 33.3ms,新增 `TARGET_FPS`。新增 `view_animated_paused` / `view_animated_with_color_paused`,暂停时冻结相位、不续订,恢复不追赶。
+- **行为变化:** `theme::color` 改为单锁 `ThemeSnapshot { colors, scheme, source, revision }`。`set_theme` 不再把任意 palette 当成命名方案:来源标记为 `PaletteSource::Custom`,明暗提示按 `bg` 亮度推导;`set_scheme` 仍标记 `PaletteSource::Named`。新增 `current_snapshot()` / `revision()`;旧 `current()` / `current_scheme()` 转发到快照,签名不变。
+- 新增 `layout::panel_heading::PanelHeading`:图标 + 标题 + 可选尾部操作 + 统一行高/可选分割线的最小组合接口,供两产品收敛重复的面板标题行。
+- 新增测试共用串行设施 `theme::test_support::lock_global_state`,color/icon_size/region 的全局状态测试共用同一把锁。
+
 ## 0.5.0
 
 迁入 Dozer 与 Digger 原先各抄一份的页签 / 菜单部件(X1)。全部是**新增**,既有公开项签名不变;但有一处**行为变化**(见第一条)。

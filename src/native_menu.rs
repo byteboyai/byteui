@@ -79,46 +79,10 @@ fn render_icon_pixmap(kind: IconKind, color: Color, size_px: u32) -> tiny_skia::
     pixmap
 }
 
-// 弹菜单时要挂靠的窗口内容 view。`show()` 是自由函数,拿不到窗口句柄,所以窗口初始化时
-// 由调用方 `install_content_view` 登记一份裸指针。只在 macOS **主线程**读写
-// (`install_content_view` 与 `show()` 都必须在主线程;`show()` 内有 `MainThreadMarker`
-// 断言),所以用 `thread_local!` + `Cell` 免加锁。注意别把它换到别的线程去读——
-// `thread_local` 每线程各一份,别的线程读到的永远是空指针。
-// 存活期与窗口本身相同,不需要释放。
-thread_local! {
-    static CONTENT_VIEW: std::cell::Cell<*mut NSView> =
-        const { std::cell::Cell::new(std::ptr::null_mut()) };
-}
-
-/// 登记弹菜单要挂靠的窗口内容 view。窗口创建后调一次(必须在主线程)。接收任何实现了
-/// `HasWindowHandle` 的窗口(`winit::window::Window`、iced 的 `window::run` 给的窗口都行);
-/// 不是 AppKit 句柄时什么也不做。
-pub fn install_content_view(window: &dyn raw_window_handle::HasWindowHandle) {
-    use raw_window_handle::RawWindowHandle;
-    let Ok(handle) = window.window_handle() else {
-        return;
-    };
-    let RawWindowHandle::AppKit(ah) = handle.as_raw() else {
-        return;
-    };
-    let ptr = ah.ns_view.as_ptr() as *mut NSView;
-    CONTENT_VIEW.with(|v| v.set(ptr));
-}
-
-fn content_view() -> Option<&'static NSView> {
-    let ptr = CONTENT_VIEW.with(|v| v.get());
-    if ptr.is_null() {
-        return None;
-    }
-    // 安全性同 `main.rs` 里其它读取该类裸指针的场景:只借引用去调只读/
-    // 弹层方法,不持有/释放。
-    Some(unsafe { &*ptr })
-}
-
-/// 一次 `show()` 调用期间,自定义 item view 的 `mouseUp:` 覆写把"选中了
-/// 第几项"写在这里;`popUpMenuPositioningItem_atLocation_inView` 返回后
-/// 读一次、立刻清空。是线程内单发的槽位(菜单是同步阻塞的模态追踪,不会
-/// 有第二个 `show()` 并发进行)。
+/// 一次菜单弹出期间,自定义 item view 的 `mouseUp:` 覆写把"选中了第几项"
+/// 写在这里;`popUpMenuPositioningItem_atLocation_inView` 返回后读一次、
+/// 立刻清空。是线程内单发的槽位(菜单是同步阻塞的模态追踪,不会有第二个
+/// 菜单并发进行)。
 static SELECTED_INDEX: std::sync::Mutex<Option<usize>> = std::sync::Mutex::new(None);
 
 // 按 `(IconKind, 颜色 ARGB, 像素尺寸)` 缓存栅格化结果,避免同一个图标
@@ -216,8 +180,8 @@ const SEP_ROW_HEIGHT: f64 = 9.0;
 
 /// 常规项整行高度:图标/文字谁高就跟谁,再加上下 padding——和
 /// `menu_item_view::MenuItemView::new` 实际起 frame 用的公式必须是同一份
-/// (`show()` 估算菜单总高、动画外的那个函数造真实行高,两处算出来的数字
-/// 对不上,`show()` 钳位时就会算少,菜单还是会超出窗口)。
+/// (菜单预估总高、真实行高两处必须是同一份公式;对不上时钳位会算少,
+/// 菜单还是会超出窗口)。
 fn entry_row_height() -> f64 {
     let font_size = crate::theme::font::label() as f64;
     let pad_v = crate::theme::geometry::menu_pad_v() as f64;
@@ -283,33 +247,33 @@ fn icon_image(kind: IconKind, color: Color, size_px: u32) -> Retained<NSImage> {
     image
 }
 
-/// 同步弹出原生菜单,阻塞到用户选中一项或点外部/按 Esc 取消。`items` 为
-/// 空时直接返回 `None`,不弹菜单。`view_pos` 是内容 view 自己坐标系里的
-/// 一点——和现有 Dozer 的 iced 版菜单 弹层用的 `last_right_click()` 是同一份
-/// 逻辑坐标,不需要转换成屏幕坐标(`popUpMenuPositioningItem:atLocation:inView:`
-/// 的 `atLocation:` 就是"目标 view 自己坐标系里的一点")。
+/// 在调用方传入的窗口上同步弹原生菜单，阻塞到选中或取消。
 ///
-/// 无图标项的文字**让出图标列**(与既有口径一致):tab 溢出菜单靠这条固定
-/// 列落"选中项前置 `>`",无图标行文字与图标行文字同列对齐。文件树/文件预览
-/// 右键菜单要的相反口径(无图标项文字顶到图标列左缘)请用
-/// [`show_align_no_icon_left`]。
-pub fn show<Msg: Clone>(items: Vec<Item<Msg>>, view_pos: (f32, f32)) -> Option<Msg> {
-    show_impl(items, view_pos, false)
-}
-
-/// [`show`] 的文件树/文件预览右键菜单变体:无图标项(复制路径/用外部软件
-/// 打开/从磁盘重新加载等纯文字工具项)不再让出图标列,文字直接顶到图标列
-/// 左缘,与带图标项的图标**左对齐**(2026-09-21 用户口径);带图标的项不受
-/// 影响。tab 溢出菜单等"无图标行必须与图标行文字同列"的菜单继续走
-/// [`show`],不能换用本入口(选中行的 `>` 占着图标列)。
-pub fn show_align_no_icon_left<Msg: Clone>(
+/// 窗口句柄只在本调用期间借用，不保存裸指针；窗口已销毁或不是 AppKit
+/// 句柄时返回 `None`(可识别的"没有选择")，不会回退到另一个窗口。
+///
+/// iced 消费方应在 `window::run` 或等效的主线程回调里调用，再把返回的
+/// `Msg` 送回产品 `update`。该方法要求主线程；非主线程直接返回 `None`。
+pub fn show_for_window<Msg: Clone>(
+    window: &dyn raw_window_handle::HasWindowHandle,
     items: Vec<Item<Msg>>,
     view_pos: (f32, f32),
 ) -> Option<Msg> {
-    show_impl(items, view_pos, true)
+    show_for_window_impl(window, items, view_pos, false)
 }
 
-fn show_impl<Msg: Clone>(
+/// [`show_for_window`] 的文件树/文件预览变体：无图标项不再让出图标列，
+/// 文字顶到图标列左缘。生命周期与线程约束同 [`show_for_window`]。
+pub fn show_align_no_icon_left_for_window<Msg: Clone>(
+    window: &dyn raw_window_handle::HasWindowHandle,
+    items: Vec<Item<Msg>>,
+    view_pos: (f32, f32),
+) -> Option<Msg> {
+    show_for_window_impl(window, items, view_pos, true)
+}
+
+fn show_for_window_impl<Msg: Clone>(
+    window: &dyn raw_window_handle::HasWindowHandle,
     items: Vec<Item<Msg>>,
     view_pos: (f32, f32),
     align_no_icon_left: bool,
@@ -317,11 +281,47 @@ fn show_impl<Msg: Clone>(
     if items.is_empty() {
         return None;
     }
-    let Some(view) = content_view() else {
-        tracing::warn!(target: "byteui::native_menu", "native_menu::show: 内容 view 未注册,跳过弹菜单");
+    let Some(mtm) = objc2::MainThreadMarker::new() else {
+        tracing::warn!(
+            target: "byteui::native_menu",
+            "native_menu::show_for_window: 非主线程调用,跳过弹菜单"
+        );
         return None;
     };
-    let mtm = objc2::MainThreadMarker::new().expect("show() 只能在主线程调用");
+    let Some(ptr) = ns_view_ptr(window) else {
+        tracing::warn!(
+            target: "byteui::native_menu",
+            "native_menu::show_for_window: 窗口没有可用的 AppKit view,跳过弹菜单"
+        );
+        return None;
+    };
+    // SAFETY: 调用方在同步菜单期间持有窗口;这里只借用引用完成本次
+    // `popUpMenuPositioningItem:atLocation:inView:`,不保存、不释放。
+    let view = unsafe { &*ptr };
+    show_on_view(mtm, view, items, view_pos, align_no_icon_left)
+}
+
+/// 从 `HasWindowHandle` 取 AppKit `NSView` 裸指针；不是 AppKit 窗口时 `None`。
+fn ns_view_ptr(window: &dyn raw_window_handle::HasWindowHandle) -> Option<*mut NSView> {
+    use raw_window_handle::RawWindowHandle;
+    let Ok(handle) = window.window_handle() else {
+        return None;
+    };
+    let RawWindowHandle::AppKit(ah) = handle.as_raw() else {
+        return None;
+    };
+    let ptr = ah.ns_view.as_ptr() as *mut NSView;
+    (!ptr.is_null()).then_some(ptr)
+}
+
+/// 在已经解析好的内容 view 上弹菜单。显式窗口入口共用这一份实现。
+fn show_on_view<Msg: Clone>(
+    mtm: objc2::MainThreadMarker,
+    view: &NSView,
+    items: Vec<Item<Msg>>,
+    view_pos: (f32, f32),
+    align_no_icon_left: bool,
+) -> Option<Msg> {
     *SELECTED_INDEX.lock().unwrap() = None;
 
     // 菜单预估尺寸(宽固定、高按行类型累加),用来把锚点钳制在内容 view
@@ -626,6 +626,23 @@ mod menu_item_view {
 mod tests {
     use super::*;
 
+    /// 显式窗口入口在拿不到 AppKit 句柄时返回"无选择"，不能回退到全局
+    /// 登记槽或另一个窗口。
+    #[test]
+    fn show_for_window_without_appkit_handle_returns_none() {
+        use raw_window_handle::{HandleError, HasWindowHandle, WindowHandle};
+
+        struct NoHandle;
+        impl HasWindowHandle for NoHandle {
+            fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+                Err(HandleError::Unavailable)
+            }
+        }
+
+        let items = vec![Item::entry(None, "Open", ())];
+        assert_eq!(show_for_window(&NoHandle, items, (0.0, 0.0)), None);
+    }
+
     /// 浅色方案下组装菜单项读 `current()` 会拿到为浅底设计的深色文字;原生
     /// 菜单底色恒为深色,`dark_equivalent` 应把这些语义 token 换成 Dark 方案
     /// 的同名 token(2026-09-20 用户反馈:浅色主题的菜单字体颜色保持和深色
@@ -692,17 +709,17 @@ mod tests {
     }
 
     #[test]
-    fn show_with_no_items_returns_none() {
-        // 空菜单不弹、不碰 AppKit。
-        let none: Option<u8> = show(Vec::new(), (10.0, 10.0));
-        assert!(none.is_none());
-    }
+    fn show_for_window_with_empty_items_returns_none() {
+        use raw_window_handle::{HandleError, HasWindowHandle, WindowHandle};
 
-    #[test]
-    fn show_without_a_registered_content_view_returns_none() {
-        // 窗口初始化前(还没调 `install_content_view`)弹菜单:记一条警告并返回 `None`,
-        // 绝不 panic、也不去碰 AppKit。测试线程上 `CONTENT_VIEW` 是空指针。
-        let none = show(vec![Item::entry(None, "x", 1u8)], (10.0, 10.0));
+        struct NoHandle;
+        impl HasWindowHandle for NoHandle {
+            fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+                Err(HandleError::Unavailable)
+            }
+        }
+
+        let none: Option<u8> = show_for_window(&NoHandle, Vec::new(), (10.0, 10.0));
         assert!(none.is_none());
     }
 }
