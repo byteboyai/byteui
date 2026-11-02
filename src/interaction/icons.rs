@@ -76,6 +76,8 @@ pub enum IconKind {
     Bot,
     Brain,
     MessageSquare,
+    /// 编辑器(写字台)面板 rail 图标(Lucide notebook-tabs)。
+    NotebookTabs,
     /// 会话列表面板(右面板区"对话"视图列表侧)的图标(Lucide
     /// bot-message-square)。
     BotMessageSquare,
@@ -303,6 +305,7 @@ impl IconKind {
             IconKind::Bot => include_bytes!("../../assets/icons/bot.svg"),
             IconKind::Brain => include_bytes!("../../assets/icons/brain.svg"),
             IconKind::MessageSquare => include_bytes!("../../assets/icons/message-square.svg"),
+            IconKind::NotebookTabs => include_bytes!("../../assets/icons/notebook-tabs.svg"),
             IconKind::BotMessageSquare => {
                 include_bytes!("../../assets/icons/bot-message-square.svg")
             }
