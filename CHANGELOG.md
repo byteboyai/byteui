@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2
+
+- 新增 `IconKind::NotebookTabs`（Lucide notebook-tabs），供 Digger 写字台入口使用；既有 API 不变。
+- 候选组合检查补齐 `dozer-file-io` 与 `dozer-git-runtime` 的同源映射，覆盖当前共享库依赖闭包。
+
 ## 未发布
 
 - **行为变化:** `theme::icon_size` 的缩放入口统一走 `normalize_scale`:非有限数(NaN/±∞)、零和负数一律拒绝并保留原有效值,有限正数钳制到 `[SCALE_MIN, SCALE_MAX]`。此前 `set_scale(f32::NAN)` 会把 NaN 写入全局缩放,环境变量 `BYTEUI_ICON_SCALE=99` 会直接超出上限。

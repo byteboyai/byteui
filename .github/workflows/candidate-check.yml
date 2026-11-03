@@ -78,6 +78,8 @@ jobs:
           [patch."https://github.com/byteboyai/dozer"]
           dozer-client = { path = "$root/dozer/crates/dozer-client" }
           dozer-core = { path = "$root/dozer/crates/dozer-core" }
+          dozer-file-io = { path = "$root/dozer/crates/dozer-file-io" }
+          dozer-git-runtime = { path = "$root/dozer/crates/dozer-git-runtime" }
           dozer-hook = { path = "$root/dozer/crates/dozer-hook" }
           dozer-i18n = { path = "$root/dozer/crates/dozer-i18n" }
           dozer-mcp = { path = "$root/dozer/crates/dozer-mcp" }
